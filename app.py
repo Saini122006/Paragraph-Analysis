@@ -1,5 +1,4 @@
 import re
-import json
 from collections import Counter
 
 import gradio as gr
@@ -13,9 +12,9 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from textblob import TextBlob
 
 
-# ---------------------------------------------------------
-# NLTK SETUP
-# ---------------------------------------------------------
+# ============================================================
+# SETUP
+# ============================================================
 
 nltk.download("stopwords", quiet=True)
 
@@ -23,79 +22,79 @@ STOP_WORDS = set(stopwords.words("english"))
 STEMMER = PorterStemmer()
 
 
-# ---------------------------------------------------------
-# SPACY MODEL
-# ---------------------------------------------------------
-
+# Load spaCy model
 try:
     nlp = spacy.load("en_core_web_sm")
 except OSError:
     raise RuntimeError(
-        "spaCy English model is missing. "
-        "Install it with: python -m spacy download en_core_web_sm"
+        "spaCy English model is not installed."
     )
 
 
-# ---------------------------------------------------------
-# HELPER FUNCTIONS
-# ---------------------------------------------------------
-
-def clean_word(word):
-    """Keep alphabetic characters and apostrophes."""
-    return re.sub(r"[^a-zA-Z']", "", word.lower())
-
+# ============================================================
+# TOKENIZER
+# ============================================================
 
 def get_tokens(text):
-    """Extract word tokens."""
-    return re.findall(r"\b[a-zA-Z]+(?:'[a-zA-Z]+)?\b", text.lower())
+    return re.findall(
+        r"\b[a-zA-Z]+(?:'[a-zA-Z]+)?\b",
+        text.lower()
+    )
 
 
-# ---------------------------------------------------------
-# MAIN NLP ANALYSIS
-# ---------------------------------------------------------
+# ============================================================
+# NLP ANALYSIS
+# ============================================================
 
 def analyze_text(text):
 
     if not text or not text.strip():
         return (
-            "Please enter some text.",
+            "⚠️ Please enter a paragraph.",
+            [],
             "",
-            "",
-            "",
-            "",
-            "",
-            "",
-            "",
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
+            [],
             ""
         )
 
     text = text.strip()
 
-    # -----------------------------
-    # SPACY PROCESSING
-    # -----------------------------
+    # --------------------------------------------------------
+    # SPACY
+    # --------------------------------------------------------
 
     doc = nlp(text)
 
-    # -----------------------------
+    # --------------------------------------------------------
     # TOKENS
-    # -----------------------------
+    # --------------------------------------------------------
 
     tokens = get_tokens(text)
 
     token_count = len(tokens)
 
-    # -----------------------------
+    # --------------------------------------------------------
     # BASIC STATISTICS
-    # -----------------------------
+    # --------------------------------------------------------
 
     sentences = list(doc.sents)
+
     sentence_count = len(sentences)
 
     characters = len(text)
-    characters_no_spaces = len(text.replace(" ", ""))
+
+    characters_no_spaces = len(
+        text.replace(" ", "")
+    )
 
     unique_words = set(tokens)
+
     vocabulary_size = len(unique_words)
 
     average_word_length = (
@@ -104,61 +103,59 @@ def analyze_text(text):
         else 0
     )
 
-    # -----------------------------
+    words_per_sentence = (
+        token_count / sentence_count
+        if sentence_count
+        else 0
+    )
+
+    vocabulary_ratio = (
+        vocabulary_size / token_count * 100
+        if token_count
+        else 0
+    )
+
+    # --------------------------------------------------------
     # BAG OF WORDS
-    # -----------------------------
+    # --------------------------------------------------------
 
     word_frequency = Counter(tokens)
 
-    bow_rows = []
+    bow_rows = [
+        [word, count]
+        for word, count in word_frequency.most_common()
+    ]
 
-    for word, count in word_frequency.most_common():
-        bow_rows.append({
-            "Word": word,
-            "Frequency": count
-        })
-
-    # -----------------------------
+    # --------------------------------------------------------
     # STOP WORDS
-    # -----------------------------
+    # --------------------------------------------------------
 
     stop_word_counter = Counter(
-        word for word in tokens
+        word
+        for word in tokens
         if word in STOP_WORDS
     )
 
-    stopword_rows = []
-
-    for word, count in stop_word_counter.most_common():
-        stopword_rows.append({
-            "Stop Word": word,
-            "Frequency": count
-        })
-
-    # -----------------------------
-    # NON-STOP WORDS
-    # -----------------------------
-
-    content_words = [
-        word for word in tokens
-        if word not in STOP_WORDS
+    stopword_rows = [
+        [word, count]
+        for word, count in stop_word_counter.most_common()
     ]
 
-    # -----------------------------
+    # --------------------------------------------------------
     # STEMMING
-    # -----------------------------
+    # --------------------------------------------------------
 
     stem_rows = []
 
     for word in tokens:
-        stem_rows.append({
-            "Word": word,
-            "Stem": STEMMER.stem(word)
-        })
+        stem_rows.append([
+            word,
+            STEMMER.stem(word)
+        ])
 
-    # -----------------------------
+    # --------------------------------------------------------
     # LEMMATIZATION + POS
-    # -----------------------------
+    # --------------------------------------------------------
 
     linguistic_rows = []
 
@@ -167,82 +164,92 @@ def analyze_text(text):
         if not token.is_alpha:
             continue
 
-        linguistic_rows.append({
-            "Word": token.text,
-            "Lemma": token.lemma_,
-            "POS": token.pos_,
-            "Detailed POS": token.tag_,
-            "Dependency": token.dep_
-        })
+        linguistic_rows.append([
+            token.text,
+            token.lemma_,
+            token.pos_,
+            token.tag_,
+            token.dep_
+        ])
 
-    # -----------------------------
+    # --------------------------------------------------------
     # NAMED ENTITY RECOGNITION
-    # -----------------------------
+    # --------------------------------------------------------
 
     entity_rows = []
 
     for entity in doc.ents:
 
-        entity_rows.append({
-            "Entity": entity.text,
-            "Type": entity.label_,
-            "Description": spacy.explain(entity.label_) or ""
-        })
+        description = spacy.explain(
+            entity.label_
+        ) or ""
 
-    # -----------------------------
+        entity_rows.append([
+            entity.text,
+            entity.label_,
+            description
+        ])
+
+    # --------------------------------------------------------
     # BIGRAMS
-    # -----------------------------
+    # --------------------------------------------------------
 
-    bigrams = list(ngrams(tokens, 2))
+    bigrams = list(
+        ngrams(tokens, 2)
+    )
+
     bigram_counter = Counter(bigrams)
 
-    bigram_rows = []
+    bigram_rows = [
+        [" ".join(pair), count]
+        for pair, count in bigram_counter.most_common()
+    ]
 
-    for pair, count in bigram_counter.most_common():
-        bigram_rows.append({
-            "Bigram": " ".join(pair),
-            "Frequency": count
-        })
-
-    # -----------------------------
+    # --------------------------------------------------------
     # TRIGRAMS
-    # -----------------------------
+    # --------------------------------------------------------
 
-    trigrams = list(ngrams(tokens, 3))
+    trigrams = list(
+        ngrams(tokens, 3)
+    )
+
     trigram_counter = Counter(trigrams)
 
-    trigram_rows = []
+    trigram_rows = [
+        [" ".join(triplet), count]
+        for triplet, count in trigram_counter.most_common()
+    ]
 
-    for triplet, count in trigram_counter.most_common():
-        trigram_rows.append({
-            "Trigram": " ".join(triplet),
-            "Frequency": count
-        })
-
-    # -----------------------------
+    # --------------------------------------------------------
     # TF-IDF
-    # -----------------------------
+    # --------------------------------------------------------
 
-    vectorizer = TfidfVectorizer(
-        lowercase=True,
-        stop_words="english"
-    )
+    tfidf_rows = []
 
     try:
 
-        tfidf_matrix = vectorizer.fit_transform([text])
+        vectorizer = TfidfVectorizer(
+            lowercase=True,
+            stop_words="english"
+        )
+
+        matrix = vectorizer.fit_transform([text])
 
         feature_names = vectorizer.get_feature_names_out()
-        scores = tfidf_matrix.toarray()[0]
 
-        tfidf_data = list(zip(feature_names, scores))
-        tfidf_data.sort(key=lambda x: x[1], reverse=True)
+        scores = matrix.toarray()[0]
+
+        tfidf_data = list(
+            zip(feature_names, scores)
+        )
+
+        tfidf_data.sort(
+            key=lambda x: x[1],
+            reverse=True
+        )
 
         tfidf_rows = [
-            {
-                "Word": word,
-                "TF-IDF Score": round(float(score), 4)
-            }
+            [word, round(float(score), 4)]
             for word, score in tfidf_data
         ]
 
@@ -250,35 +257,28 @@ def analyze_text(text):
 
         tfidf_rows = []
 
-    # -----------------------------
+    # --------------------------------------------------------
     # SENTIMENT
-    # -----------------------------
+    # --------------------------------------------------------
 
     blob = TextBlob(text)
 
     polarity = blob.sentiment.polarity
+
     subjectivity = blob.sentiment.subjectivity
 
     if polarity > 0.05:
         sentiment = "Positive 😊"
+
     elif polarity < -0.05:
         sentiment = "Negative 😞"
+
     else:
         sentiment = "Neutral 😐"
 
-    # -----------------------------
-    # READABILITY - SIMPLE METRICS
-    # -----------------------------
-
-    words_per_sentence = (
-        token_count / sentence_count
-        if sentence_count
-        else 0
-    )
-
-    # -----------------------------
+    # --------------------------------------------------------
     # OVERVIEW
-    # -----------------------------
+    # --------------------------------------------------------
 
     overview = f"""
 # 📊 NLP Analysis
@@ -294,64 +294,71 @@ def analyze_text(text):
 | Characters without spaces | {characters_no_spaces} |
 | Average Word Length | {average_word_length:.2f} |
 | Words per Sentence | {words_per_sentence:.2f} |
-| Vocabulary Ratio | {(vocabulary_size / token_count * 100) if token_count else 0:.2f}% |
+| Vocabulary Ratio | {vocabulary_ratio:.2f}% |
+
+---
 
 ## 😊 Sentiment
 
 **{sentiment}**
 
-- Polarity: `{polarity:.3f}`
-- Subjectivity: `{subjectivity:.3f}`
+**Polarity:** `{polarity:.3f}`
 
-## 🔑 Most Common Words
+**Subjectivity:** `{subjectivity:.3f}`
+
+---
+
+## 🔝 Most Common Words
 
 """
 
     for word, count in word_frequency.most_common(10):
-        overview += f"- **{word}** → {count}\n"
 
-    # -----------------------------
-    # TOKEN OUTPUT
-    # -----------------------------
+        overview += (
+            f"- **{word}** → {count}\n"
+        )
 
-    token_output = "### Tokens\n\n"
+    # --------------------------------------------------------
+    # TOKENS
+    # --------------------------------------------------------
 
-    token_output += " | ".join(tokens)
+    token_output = """
+# 🔤 Tokens
 
-    # -----------------------------
+"""
+
+    token_output += " • ".join(tokens)
+
+    # --------------------------------------------------------
     # SENTIMENT OUTPUT
-    # -----------------------------
+    # --------------------------------------------------------
 
     sentiment_output = f"""
 # 😊 Sentiment Analysis
 
-### Overall Sentiment
+### Overall
 
-**{sentiment}**
+## {sentiment}
 
 ### Polarity
 
 `{polarity:.3f}`
 
-Range:
-
-- `-1` = very negative
-- `0` = neutral
-- `+1` = very positive
+**-1** = Very Negative  
+**0** = Neutral  
+**+1** = Very Positive
 
 ### Subjectivity
 
 `{subjectivity:.3f}`
 
-Range:
-
-- `0` = objective
-- `1` = subjective
+**0** = Objective  
+**1** = Subjective
 """
 
-    # -----------------------------
-    # RETURN EVERYTHING
-    # -----------------------------
+    # --------------------------------------------------------
+    # RETURN
+    # --------------------------------------------------------
 
     return (
         overview,
@@ -368,28 +375,27 @@ Range:
     )
 
 
-# ---------------------------------------------------------
-# GRADIO INTERFACE
-# ---------------------------------------------------------
+# ============================================================
+# GRADIO UI
+# ============================================================
 
 DESCRIPTION = """
-## 🧠 NLP Text Analyzer
+### Explore a paragraph using Natural Language Processing.
 
-Enter a paragraph and explore it using classical Natural Language Processing.
+This tool analyzes:
 
-The analyzer performs:
-
-- Tokenization
-- Bag of Words
-- Stop-word detection
-- Stemming
-- Lemmatization
-- Part-of-Speech tagging
-- Named Entity Recognition
-- Bigrams and Trigrams
-- TF-IDF
-- Sentiment analysis
-- Text statistics
+🔤 Tokenization  
+👜 Bag of Words  
+🚫 Stop Words  
+🌱 Stemming  
+🧩 Lemmatization  
+🏷️ POS Tagging  
+🌍 Named Entity Recognition  
+🔗 Bigrams  
+🔗 Trigrams  
+📈 TF-IDF  
+😊 Sentiment Analysis  
+📊 Text Statistics
 """
 
 
@@ -404,6 +410,10 @@ with gr.Blocks(
 
     gr.Markdown(DESCRIPTION)
 
+    # --------------------------------------------------------
+    # INPUT
+    # --------------------------------------------------------
+
     with gr.Row():
 
         with gr.Column(scale=2):
@@ -411,20 +421,22 @@ with gr.Blocks(
             text_input = gr.Textbox(
                 label="Enter your paragraph",
                 placeholder=(
-                    "Enter any paragraph here..."
+                    "Enter a paragraph here..."
                 ),
                 lines=12
             )
 
-            analyze_button = gr.Button(
-                "🔍 Analyze Text",
-                variant="primary"
-            )
+            with gr.Row():
 
-            clear_button = gr.ClearButton(
-                components=[text_input],
-                value="🗑️ Clear"
-            )
+                analyze_button = gr.Button(
+                    "🔍 Analyze Text",
+                    variant="primary"
+                )
+
+                clear_button = gr.ClearButton(
+                    components=[text_input],
+                    value="🗑️ Clear"
+                )
 
         with gr.Column(scale=1):
 
@@ -437,16 +449,18 @@ of artificial intelligence that helps
 computers understand human language.
 
 NLP is used in search engines,
-chatbots, translation systems and
-many other applications.
+chatbots, translation systems and many
+other applications.
 """
             )
 
-    # -----------------------------
+    # --------------------------------------------------------
     # RESULTS
-    # -----------------------------
+    # --------------------------------------------------------
 
-    gr.Markdown("## 📊 Results")
+    gr.Markdown(
+        "## 📊 Results"
+    )
 
     with gr.Tabs():
 
@@ -459,9 +473,14 @@ many other applications.
         with gr.Tab("👜 Bag of Words"):
 
             bow_output = gr.Dataframe(
-                headers=["Word", "Frequency"],
-                datatype=["str", "number"],
-                label="Word Frequencies",
+                headers=[
+                    "Word",
+                    "Frequency"
+                ],
+                datatype=[
+                    "str",
+                    "number"
+                ],
                 interactive=False
             )
 
@@ -470,12 +489,18 @@ many other applications.
 
             token_output = gr.Markdown()
 
-        # STOPWORDS
+        # STOP WORDS
         with gr.Tab("🚫 Stop Words"):
 
             stopword_output = gr.Dataframe(
-                headers=["Stop Word", "Frequency"],
-                datatype=["str", "number"],
+                headers=[
+                    "Stop Word",
+                    "Frequency"
+                ],
+                datatype=[
+                    "str",
+                    "number"
+                ],
                 interactive=False
             )
 
@@ -483,8 +508,14 @@ many other applications.
         with gr.Tab("🌱 Stemming"):
 
             stem_output = gr.Dataframe(
-                headers=["Word", "Stem"],
-                datatype=["str", "str"],
+                headers=[
+                    "Word",
+                    "Stem"
+                ],
+                datatype=[
+                    "str",
+                    "str"
+                ],
                 interactive=False
             )
 
@@ -576,9 +607,9 @@ many other applications.
 
             sentiment_output = gr.Markdown()
 
-    # -----------------------------
-    # BUTTON EVENT
-    # -----------------------------
+    # --------------------------------------------------------
+    # BUTTON
+    # --------------------------------------------------------
 
     analyze_button.click(
         fn=analyze_text,
@@ -599,9 +630,9 @@ many other applications.
     )
 
 
-# ---------------------------------------------------------
-# START SERVER
-# ---------------------------------------------------------
+# ============================================================
+# SERVER
+# ============================================================
 
 if __name__ == "__main__":
 
